@@ -28,7 +28,7 @@ spec:
         - name: PORT
           value: "8080"
         - name: OPENCLAW_WEBHOOK_URL
-          value: "http://host.minikube.internal:18789/hooks"
+          value: "http://192.168.69.69:18789/hooks"
         - name: WEBHOOK_TOKEN
           valueFrom:
             secretKeyRef:
