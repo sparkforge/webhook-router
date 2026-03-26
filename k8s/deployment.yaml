@@ -20,7 +20,7 @@ spec:
         - name: ghcr-secret
       containers:
       - name: webhook-router
-        image: ghcr.io/sparkforge/webhook-router:latest
+        image: ghcr.io/sparkforge/webhook-router:main
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
