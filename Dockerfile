@@ -2,8 +2,8 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
-COPY main.go go.mod ./
-RUN go mod init webhook-router 2>/dev/null || true
+COPY main.go ./
+RUN go mod init webhook-router
 RUN go build -o webhook-router main.go
 
 # Runtime stage
