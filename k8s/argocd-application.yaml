@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: webhook-router
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: webhook=ghcr.io/sparkforge/webhook-router
+    argocd-image-updater.argoproj.io/webhook.update-strategy: newest-build
+    argocd-image-updater.argoproj.io/webhook.allow-tags: regexp:^sha-[a-f0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:sparkforge/webhook-router.git
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
