@@ -17,7 +17,7 @@ spec:
         app: webhook-router
     spec:
       imagePullSecrets:
-        - name: ghcr-pull-secret
+        - name: ghcr-secret
       containers:
       - name: webhook-router
         image: ghcr.io/sparkforge/webhook-router:latest
