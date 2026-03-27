@@ -28,7 +28,7 @@ spec:
         - name: PORT
           value: "8080"
         - name: OPENCLAW_WEBHOOK_URL
-          value: "http://host.k3s.internal:18789/hooks"
+          value: "http://10.42.0.1:18789/hooks"
         - name: WEBHOOK_TOKEN
           valueFrom:
             secretKeyRef:
