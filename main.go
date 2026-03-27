@@ -15,7 +15,9 @@ type TelnyxSMSPayload struct {
 	Data struct {
 		Payload struct {
 			To          string `json:"to"`
-			From        string `json:"from"`
+			From        struct {
+				PhoneNumber string `json:"phone_number"`
+			} `json:"from"`
 			Body        string `json:"text"`
 			MessageID   string `json:"id"`
 		} `json:"payload"`
@@ -49,7 +51,7 @@ func (r *WebhookRouter) handleTelnyxSMS(w http.ResponseWriter, req *http.Request
 	}
 
 	log.Printf("Received SMS from %s to %s: %s",
-		payload.Data.Payload.From,
+		payload.Data.Payload.From.PhoneNumber,
 		payload.Data.Payload.To,
 		payload.Data.Payload.Body)
 
