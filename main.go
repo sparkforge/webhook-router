@@ -81,13 +81,16 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 	
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal error: %v", err)
 	}
 	
 	// Create the request
-	req, err := http.NewRequest("POST", r.openclawWebhookURL+"/wake", bytes.NewBuffer(jsonBody))
+	url := r.openclawWebhookURL + "/wake"
+	log.Printf("Forwarding to: %s", url)
+	
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return err
+		return fmt.Errorf("request create error: %v", err)
 	}
 	
 	req.Header.Set("Content-Type", "application/json")
@@ -97,7 +100,7 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("http post error: %v", err)
 	}
 	defer resp.Body.Close()
 	
