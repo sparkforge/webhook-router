@@ -14,7 +14,10 @@ import (
 type TelnyxSMSPayload struct {
 	Data struct {
 		Payload struct {
-			To          string `json:"to"`
+			To          []struct {
+				PhoneNumber string `json:"phone_number"`
+				Status      string `json:"status,omitempty"`
+			} `json:"to"`
 			From        struct {
 				PhoneNumber string `json:"phone_number"`
 			} `json:"from"`
@@ -50,9 +53,15 @@ func (r *WebhookRouter) handleTelnyxSMS(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Get first recipient if array
+	var toNumber string
+	if len(payload.Data.Payload.To) > 0 {
+		toNumber = payload.Data.Payload.To[0].PhoneNumber
+	}
+	
 	log.Printf("Received SMS from %s to %s: %s",
 		payload.Data.Payload.From.PhoneNumber,
-		payload.Data.Payload.To,
+		toNumber,
 		payload.Data.Payload.Body)
 
 	// Forward to OpenClaw
