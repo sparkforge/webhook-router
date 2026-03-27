@@ -71,8 +71,39 @@ func (r *WebhookRouter) handleHealth(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{}) error {
-	// For now, just log it. Later we'll POST to OpenClaw
-	log.Printf("Would forward %s event to %s", eventType, r.openclawWebhookURL)
+	// Build the request body
+	body := map[string]interface{}{
+		"text": fmt.Sprintf("Telnyx SMS received: %+v", payload),
+		"mode": "now",
+	}
+	
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	
+	// Create the request
+	req, err := http.NewRequest("POST", r.openclawWebhookURL+"/wake", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return err
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+r.webhookSecret)
+	
+	// Send the request
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("OpenClaw returned status %d", resp.StatusCode)
+	}
+	
+	log.Printf("Forwarded %s event to OpenClaw successfully", eventType)
 	return nil
 }
 
