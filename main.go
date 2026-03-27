@@ -107,6 +107,13 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+r.webhookSecret)
 	
+	// Log token (first 10 chars for debugging)
+	if len(r.webhookSecret) > 10 {
+		log.Printf("Using token: %s... (len=%d)", r.webhookSecret[:10], len(r.webhookSecret))
+	} else {
+		log.Printf("Token too short or empty: len=%d", len(r.webhookSecret))
+	}
+	
 	// Send the request
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
