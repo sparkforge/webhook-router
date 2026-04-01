@@ -15,6 +15,12 @@ spec:
     metadata:
       labels:
         app: webhook-router
+    metadata:
+      labels:
+        app: webhook-router
+      annotations:
+        operator.1password.io/inject: "webhook-router"
+        operator.1password.io/version: "2"
     spec:
       imagePullSecrets:
         - name: ghcr-secret
@@ -30,9 +36,11 @@ spec:
         - name: OPENCLAW_WEBHOOK_URL
           value: "http://10.42.0.1:18789/hooks"
         - name: WEBHOOK_SECRET
+          value: "op://K8s - SparkForge/webhook-router/token"
+        - name: OP_SERVICE_ACCOUNT_TOKEN
           valueFrom:
             secretKeyRef:
-              name: webhook-router-secret
+              name: op-service-account
               key: token
         resources:
           requests:
