@@ -56,19 +56,36 @@ type TelnyxVoicePayload struct {
 
 // TelnyxCallCommand represents a call control command to send to Telnyx
 type TelnyxCallCommand struct {
-	Command      string `json:"command"`
-	CallControlID string `json:"call_control_id,omitempty"`
-	WebhookURL   string `json:"webhook_url,omitempty"`
-	AudioURL     string `json:"audio_url,omitempty"`
-	Text         string `json:"text,omitempty"`
-	Language     string `json:"language,omitempty"`
-	Voice        string `json:"voice,omitempty"`
-	Record       string `json:"record,omitempty"`
-	RecordFormat string `json:"record_format,omitempty"`
-	To           string `json:"to,omitempty"`
-	From         string `json:"from,omitempty"`
-	ClientState  string `json:"client_state,omitempty"`
+	Command           string `json:"command"`
+	CallControlID      string `json:"call_control_id,omitempty"`
+	WebhookURL         string `json:"webhook_url,omitempty"`
+	AudioURL           string `json:"audio_url,omitempty"`
+	Text               string `json:"text,omitempty"`
+	Language           string `json:"language,omitempty"`
+	Voice              string `json:"voice,omitempty"`
+	Record             string `json:"record,omitempty"`
+	RecordFormat       string `json:"record_format,omitempty"`
+	To                 string `json:"to,omitempty"`
+	From               string `json:"from,omitempty"`
+	ClientState        string `json:"client_state,omitempty"`
+	TranscriptionType  string `json:"transcription_type,omitempty"`
+	TranscriptionURL   string `json:"transcription_url,omitempty"`
 }
+
+// VoiceCallStore tracks active calls and their recordings
+type VoiceCallStore struct {
+	calls map[string]*VoiceCall // keyed by call_control_id
+}
+
+type VoiceCall struct {
+	From          string
+	To            string
+	RecordingURL  string
+	Transcription string
+	StartedAt     time.Time
+}
+
+var callStore = &VoiceCallStore{calls: make(map[string]*VoiceCall)}
 
 // WebhookRouter handles incoming webhooks and routes them
 type WebhookRouter struct {
@@ -219,11 +236,12 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 	}
 
 	eventType := payload.Data.EventType
+	callID := payload.Data.Payload.CallControlID
+	from := payload.Data.Payload.From
+	to := payload.Data.Payload.To
+
 	log.Printf("Received voice event %s: from %s to %s (call_control_id: %s)",
-		eventType,
-		payload.Data.Payload.From,
-		payload.Data.Payload.To,
-		payload.Data.Payload.CallControlID)
+		eventType, from, to, callID)
 
 	// Get API key from environment
 	apiKey := os.Getenv("TELNYX_API_KEY")
@@ -234,11 +252,18 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 	// Handle different voice events
 	switch eventType {
 	case "call.initiated":
+		// Store call info
+		callStore.calls[callID] = &VoiceCall{
+			From:      from,
+			To:        to,
+			StartedAt: time.Now(),
+		}
+
 		// Answer incoming call
 		if apiKey != "" && payload.Data.Payload.Direction == "incoming" {
 			command := TelnyxCallCommand{
 				Command:       "answer",
-				CallControlID: payload.Data.Payload.CallControlID,
+				CallControlID: callID,
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
 			}
 			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
@@ -247,14 +272,13 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		}
 
 	case "call.answered":
-		// Play greeting and start recording
+		// Play greeting from Charsi
 		if apiKey != "" {
-			// Speak a greeting
 			command := TelnyxCallCommand{
 				Command:       "speak",
-				CallControlID: payload.Data.Payload.CallControlID,
+				CallControlID: callID,
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
-				Text:          "Hello, you've reached SparkForge. Please leave a message after the tone.",
+				Text:          "Hi there, you've reached SparkForge. I'm Charsi, the AI assistant. Please leave your message after the tone and I'll get back to you.",
 				Language:      "en-US",
 				Voice:         "female",
 			}
@@ -264,13 +288,15 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		}
 
 	case "call.speak.ended":
-		// Start recording after greeting
+		// Start recording after greeting, with transcription enabled
 		if apiKey != "" {
 			command := TelnyxCallCommand{
-				Command:       "record_start",
-				CallControlID: payload.Data.Payload.CallControlID,
-				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
-				RecordFormat:  "wav",
+				Command:           "record_start",
+				CallControlID:     callID,
+				WebhookURL:        r.getWebhookURL("/webhook/telnyx/voice"),
+				RecordFormat:      "wav",
+				TranscriptionType: "auto", // Enable automatic transcription
+				TranscriptionURL:  r.getWebhookURL("/webhook/telnyx/transcription"),
 			}
 			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
 				log.Printf("Error starting recording: %v", err)
@@ -278,20 +304,23 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		}
 
 	case "call.hangup":
-		// Call ended - forward notification to OpenClaw
-		log.Printf("Call ended: %s -> %s", payload.Data.Payload.From, payload.Data.Payload.To)
-		if payload.Data.Payload.RecordingURL != "" {
-			log.Printf("Recording available at: %s", payload.Data.Payload.RecordingURL)
-		}
+		// Call ended - log it
+		log.Printf("Call ended: %s -> %s", from, to)
 
 	case "call.recording.saved":
-		// Recording saved - notify OpenClaw
-		log.Printf("Recording saved for call %s: %s", payload.Data.Payload.CallControlID, payload.Data.Payload.RecordingURL)
-	}
-
-	// Forward event to OpenClaw
-	if err := r.forwardToOpenClaw("telnyx_voice_"+eventType, payload); err != nil {
-		log.Printf("Error forwarding to OpenClaw: %v", err)
+		// Recording saved - store URL
+		if call, ok := callStore.calls[callID]; ok {
+			call.RecordingURL = payload.Data.Payload.RecordingURL
+			log.Printf("Recording saved for call %s: %s", callID, call.RecordingURL)
+		}
+		
+		// Send immediate notification that voicemail was received
+		r.forwardToOpenClaw("telnyx_voicemail_received", map[string]interface{}{
+			"from":          from,
+			"to":            to,
+			"recording_url": payload.Data.Payload.RecordingURL,
+			"message":       fmt.Sprintf("📞 New voicemail from %s to SparkForge. Recording will be transcribed shortly.", from),
+		})
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -311,6 +340,78 @@ func (r *WebhookRouter) getWebhookURL(path string) string {
 	return baseURL + path
 }
 
+// TelnyxTranscriptionPayload represents a transcription webhook from Telnyx
+type TelnyxTranscriptionPayload struct {
+	Data struct {
+		RecordType string `json:"record_type"`
+		EventType  string `json:"event_type"`
+		ID         string `json:"id"`
+		OccurredAt string `json:"occurred_at"`
+		Payload    struct {
+			CallControlID   string `json:"call_control_id"`
+			CallLegID       string `json:"call_leg_id"`
+			CallSessionID   string `json:"call_session_id"`
+			ConnectionID    string `json:"connection_id"`
+			TranscriptionID string `json:"transcription_id"`
+			Transcript      string `json:"transcript"`
+			Confidence      string `json:"confidence,omitempty"`
+			RecordingID     string `json:"recording_id"`
+			RecordingURL    string `json:"recording_url"`
+		} `json:"payload"`
+	} `json:"data"`
+}
+
+// handleTelnyxTranscription handles transcription webhooks from Telnyx
+func (r *WebhookRouter) handleTelnyxTranscription(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload TelnyxTranscriptionPayload
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		log.Printf("Error decoding transcription payload: %v", err)
+		return
+	}
+
+	callID := payload.Data.Payload.CallControlID
+	transcript := payload.Data.Payload.Transcript
+	recordingURL := payload.Data.Payload.RecordingURL
+
+	log.Printf("Received transcription for call %s: %s", callID, transcript)
+
+	// Get the call info
+	var from string
+	if call, ok := callStore.calls[callID]; ok {
+		from = call.From
+		call.Transcription = transcript
+	}
+
+	// Build message for Charsi with the transcription
+	message := fmt.Sprintf("📞 Voicemail from %s\n\n📝 Transcription:\n%s\n\n🔊 Recording: %s",
+		from, transcript, recordingURL)
+
+	// Forward to OpenClaw with a clear summary
+	notification := map[string]interface{}{
+		"from":           from,
+		"transcription":  transcript,
+		"recording_url":  recordingURL,
+		"call_control_id": callID,
+		"message":        message,
+	}
+
+	if err := r.forwardToOpenClaw("telnyx_voicemail_transcribed", notification); err != nil {
+		log.Printf("Error forwarding transcription to OpenClaw: %v", err)
+	}
+
+	// Clean up the call from store after we have the transcription
+	delete(callStore.calls, callID)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 func main() {
 	openclawURL := os.Getenv("OPENCLAW_WEBHOOK_URL")
 	if openclawURL == "" {
@@ -323,6 +424,7 @@ func main() {
 
 	http.HandleFunc("/webhook/telnyx/sms", router.handleTelnyxSMS)
 	http.HandleFunc("/webhook/telnyx/voice", router.handleTelnyxVoice)
+	http.HandleFunc("/webhook/telnyx/transcription", router.handleTelnyxTranscription)
 	http.HandleFunc("/health", router.handleHealth)
 
 	port := os.Getenv("PORT")
