@@ -34,6 +34,13 @@ spec:
             secretKeyRef:
               name: webhook-router-secret
               key: token
+        - name: TELNYX_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: webhook-router-secret
+              key: telnyx-api-key
+        - name: PUBLIC_WEBHOOK_URL
+          value: "https://hooks.sparkforge.io"
         resources:
           requests:
             memory: "32Mi"
