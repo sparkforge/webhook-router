@@ -14,15 +14,15 @@ import (
 type TelnyxSMSPayload struct {
 	Data struct {
 		Payload struct {
-			To          []struct {
+			To []struct {
 				PhoneNumber string `json:"phone_number"`
 				Status      string `json:"status,omitempty"`
 			} `json:"to"`
-			From        struct {
+			From struct {
 				PhoneNumber string `json:"phone_number"`
 			} `json:"from"`
-			Body        string `json:"text"`
-			MessageID   string `json:"id"`
+			Body      string `json:"text"`
+			MessageID string `json:"id"`
 		} `json:"payload"`
 	} `json:"data"`
 }
@@ -35,41 +35,46 @@ type TelnyxVoicePayload struct {
 		ID         string `json:"id"`
 		OccurredAt string `json:"occurred_at"`
 		Payload    struct {
-			CallControlID  string `json:"call_control_id"`
-			ConnectionID   string `json:"connection_id"`
-			CallLegID      string `json:"call_leg_id"`
-			CallSessionID  string `json:"call_session_id"`
-			ClientState    string `json:"client_state"`
-			From           string `json:"from"`
-			To             string `json:"to"`
-			Direction      string `json:"direction"`
-			State          string `json:"state"`
-			AudioURL       string `json:"audio_url,omitempty"`
-			Text           string `json:"text,omitempty"`
-			Status         string `json:"status,omitempty"`
-			DTMF           string `json:"dtmf,omitempty"`
-			RecordingURL   string `json:"recording_url,omitempty"`
-			RecordingID    string `json:"recording_id,omitempty"`
+			CallControlID   string `json:"call_control_id"`
+			ConnectionID    string `json:"connection_id"`
+			CallLegID       string `json:"call_leg_id"`
+			CallSessionID   string `json:"call_session_id"`
+			ClientState     string `json:"client_state"`
+			From            string `json:"from"`
+			To              string `json:"to"`
+			Direction       string `json:"direction"`
+			State           string `json:"state"`
+			AudioURL        string `json:"audio_url,omitempty"`
+			Text            string `json:"text,omitempty"`
+			Status          string `json:"status,omitempty"`
+			DTMF            string `json:"dtmf,omitempty"`
+			RecordingURL    string `json:"recording_url,omitempty"`
+			RecordingID     string `json:"recording_id,omitempty"`
+			TranscriptionID string `json:"transcription_id,omitempty"`
 		} `json:"payload"`
 	} `json:"data"`
 }
 
 // TelnyxCallCommand represents a call control command to send to Telnyx
 type TelnyxCallCommand struct {
-	Command           string `json:"command"`
-	CallControlID      string `json:"call_control_id,omitempty"`
-	WebhookURL         string `json:"webhook_url,omitempty"`
-	AudioURL           string `json:"audio_url,omitempty"`
-	Text               string `json:"text,omitempty"`
-	Language           string `json:"language,omitempty"`
-	Voice              string `json:"voice,omitempty"`
-	Record             string `json:"record,omitempty"`
-	RecordFormat       string `json:"record_format,omitempty"`
-	To                 string `json:"to,omitempty"`
-	From               string `json:"from,omitempty"`
-	ClientState        string `json:"client_state,omitempty"`
-	TranscriptionType  string `json:"transcription_type,omitempty"`
-	TranscriptionURL   string `json:"transcription_url,omitempty"`
+	Command               string `json:"command,omitempty"`
+	CallControlID         string `json:"call_control_id,omitempty"`
+	WebhookURL            string `json:"webhook_url,omitempty"`
+	AudioURL              string `json:"audio_url,omitempty"`
+	Text                  string `json:"text,omitempty"`
+	Language              string `json:"language,omitempty"`
+	Voice                 string `json:"voice,omitempty"`
+	Format                string `json:"format,omitempty"`
+	Channels              string `json:"channels,omitempty"`
+	PlayBeep              bool   `json:"play_beep,omitempty"`
+	MaxLength             int    `json:"max_length,omitempty"`
+	RecordingTrack        string `json:"recording_track,omitempty"`
+	To                    string `json:"to,omitempty"`
+	From                  string `json:"from,omitempty"`
+	ClientState           string `json:"client_state,omitempty"`
+	Transcription         bool   `json:"transcription,omitempty"`
+	TranscriptionEngine   string `json:"transcription_engine,omitempty"`
+	TranscriptionLanguage string `json:"transcription_language,omitempty"`
 }
 
 // VoiceCallStore tracks active calls and their recordings
@@ -118,7 +123,7 @@ func (r *WebhookRouter) handleTelnyxSMS(w http.ResponseWriter, req *http.Request
 	if len(payload.Data.Payload.To) > 0 {
 		toNumber = payload.Data.Payload.To[0].PhoneNumber
 	}
-	
+
 	log.Printf("Received SMS from %s to %s: %s",
 		payload.Data.Payload.From.PhoneNumber,
 		toNumber,
@@ -149,31 +154,31 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 		"text": fmt.Sprintf("Telnyx %s received: %+v", eventType, payload),
 		"mode": "now",
 	}
-	
+
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal error: %v", err)
 	}
-	
+
 	// Create the request
 	url := r.openclawWebhookURL + "/wake"
 	log.Printf("Forwarding to: %s", url)
-	
+
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("request create error: %v", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+r.webhookSecret)
-	
+
 	// Log token (first 10 chars for debugging)
 	if len(r.webhookSecret) > 10 {
 		log.Printf("Using token: %s... (len=%d)", r.webhookSecret[:10], len(r.webhookSecret))
 	} else {
 		log.Printf("Token too short or empty: len=%d", len(r.webhookSecret))
 	}
-	
+
 	// Send the request
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -181,11 +186,11 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 		return fmt.Errorf("http post error: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("OpenClaw returned status %d", resp.StatusCode)
 	}
-	
+
 	log.Printf("Forwarded %s event to OpenClaw successfully", eventType)
 	return nil
 }
@@ -291,12 +296,15 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		// Start recording after greeting, with transcription enabled
 		if apiKey != "" {
 			command := TelnyxCallCommand{
-				Command:           "record_start",
-				CallControlID:     callID,
-				WebhookURL:        r.getWebhookURL("/webhook/telnyx/voice"),
-				RecordFormat:      "wav",
-				TranscriptionType: "auto", // Enable automatic transcription
-				TranscriptionURL:  r.getWebhookURL("/webhook/telnyx/transcription"),
+				Command:               "record_start",
+				CallControlID:         callID,
+				WebhookURL:            r.getWebhookURL("/webhook/telnyx/voice"),
+				Format:                "wav",
+				Channels:              "single",
+				PlayBeep:              true,
+				Transcription:         true,
+				TranscriptionEngine:   "B", // Telnyx engine
+				TranscriptionLanguage: "en-US",
 			}
 			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
 				log.Printf("Error starting recording: %v", err)
@@ -313,14 +321,41 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 			call.RecordingURL = payload.Data.Payload.RecordingURL
 			log.Printf("Recording saved for call %s: %s", callID, call.RecordingURL)
 		}
-		
-		// Send immediate notification that voicemail was received
-		r.forwardToOpenClaw("telnyx_voicemail_received", map[string]interface{}{
-			"from":          from,
-			"to":            to,
-			"recording_url": payload.Data.Payload.RecordingURL,
-			"message":       fmt.Sprintf("📞 New voicemail from %s to SparkForge. Recording will be transcribed shortly.", from),
-		})
+
+		// Note: Transcription comes separately via call.recording.transcription.saved
+
+	case "call.recording.transcription.saved":
+		// Transcription received - send to OpenClaw
+		transcript := payload.Data.Payload.Text
+		recordingURL := payload.Data.Payload.RecordingURL
+
+		// Get the call info
+		var caller string
+		if call, ok := callStore.calls[callID]; ok {
+			caller = call.From
+			call.Transcription = transcript
+		}
+
+		// Build message for Charsi with the transcription
+		message := fmt.Sprintf("📞 Voicemail from %s\n\n📝 Transcription:\n%s\n\n🔊 Recording: %s",
+			caller, transcript, recordingURL)
+
+		// Forward to OpenClaw with a clear summary
+		notification := map[string]interface{}{
+			"from":            caller,
+			"to":              to,
+			"transcription":   transcript,
+			"recording_url":   recordingURL,
+			"call_control_id": callID,
+			"message":         message,
+		}
+
+		if err := r.forwardToOpenClaw("telnyx_voicemail_transcribed", notification); err != nil {
+			log.Printf("Error forwarding transcription to OpenClaw: %v", err)
+		}
+
+		// Clean up the call from store after we have the transcription
+		delete(callStore.calls, callID)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -330,86 +365,11 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 // getWebhookURL returns the full URL for a webhook path
 func (r *WebhookRouter) getWebhookURL(path string) string {
 	// This should be the public-facing webhook URL
-	// For now, we'll use an environment variable or construct it
 	baseURL := os.Getenv("PUBLIC_WEBHOOK_URL")
 	if baseURL == "" {
-		// Default to the same host as the router is running on
-		// In production, this should be set to the external URL (e.g., https://hooks.sparkforge.io)
 		return "https://hooks.sparkforge.io" + path
 	}
 	return baseURL + path
-}
-
-// TelnyxTranscriptionPayload represents a transcription webhook from Telnyx
-type TelnyxTranscriptionPayload struct {
-	Data struct {
-		RecordType string `json:"record_type"`
-		EventType  string `json:"event_type"`
-		ID         string `json:"id"`
-		OccurredAt string `json:"occurred_at"`
-		Payload    struct {
-			CallControlID   string `json:"call_control_id"`
-			CallLegID       string `json:"call_leg_id"`
-			CallSessionID   string `json:"call_session_id"`
-			ConnectionID    string `json:"connection_id"`
-			TranscriptionID string `json:"transcription_id"`
-			Transcript      string `json:"transcript"`
-			Confidence      string `json:"confidence,omitempty"`
-			RecordingID     string `json:"recording_id"`
-			RecordingURL    string `json:"recording_url"`
-		} `json:"payload"`
-	} `json:"data"`
-}
-
-// handleTelnyxTranscription handles transcription webhooks from Telnyx
-func (r *WebhookRouter) handleTelnyxTranscription(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var payload TelnyxTranscriptionPayload
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		log.Printf("Error decoding transcription payload: %v", err)
-		return
-	}
-
-	callID := payload.Data.Payload.CallControlID
-	transcript := payload.Data.Payload.Transcript
-	recordingURL := payload.Data.Payload.RecordingURL
-
-	log.Printf("Received transcription for call %s: %s", callID, transcript)
-
-	// Get the call info
-	var from string
-	if call, ok := callStore.calls[callID]; ok {
-		from = call.From
-		call.Transcription = transcript
-	}
-
-	// Build message for Charsi with the transcription
-	message := fmt.Sprintf("📞 Voicemail from %s\n\n📝 Transcription:\n%s\n\n🔊 Recording: %s",
-		from, transcript, recordingURL)
-
-	// Forward to OpenClaw with a clear summary
-	notification := map[string]interface{}{
-		"from":           from,
-		"transcription":  transcript,
-		"recording_url":  recordingURL,
-		"call_control_id": callID,
-		"message":        message,
-	}
-
-	if err := r.forwardToOpenClaw("telnyx_voicemail_transcribed", notification); err != nil {
-		log.Printf("Error forwarding transcription to OpenClaw: %v", err)
-	}
-
-	// Clean up the call from store after we have the transcription
-	delete(callStore.calls, callID)
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func main() {
@@ -424,7 +384,6 @@ func main() {
 
 	http.HandleFunc("/webhook/telnyx/sms", router.handleTelnyxSMS)
 	http.HandleFunc("/webhook/telnyx/voice", router.handleTelnyxVoice)
-	http.HandleFunc("/webhook/telnyx/transcription", router.handleTelnyxTranscription)
 	http.HandleFunc("/health", router.handleHealth)
 
 	port := os.Getenv("PORT")
