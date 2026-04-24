@@ -168,6 +168,13 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 		"mode": "now",
 	}
 
+	// If target session key is configured, route there
+	targetSession := os.Getenv("TARGET_SESSION_KEY")
+	if targetSession != "" {
+		body["sessionKey"] = targetSession
+		log.Printf("Routing to session: %s", targetSession)
+	}
+
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal error: %v", err)

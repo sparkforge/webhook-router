@@ -41,6 +41,8 @@ spec:
               key: telnyx-api-key
         - name: PUBLIC_WEBHOOK_URL
           value: "https://hooks.sparkforge.io"
+        - name: TARGET_SESSION_KEY
+          value: "agent:main:signal:group:svnebrphdiqyhbemybm94wgtqipmci/kfjph0ozb8ys="
         resources:
           requests:
             memory: "32Mi"
