@@ -269,7 +269,6 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		if apiKey != "" && payload.Data.Payload.Direction == "incoming" {
 			command := TelnyxCallCommand{
 				Command:       "answer",
-				CallControlID: callID,
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
 			}
 			if err := r.sendTelnyxCommand(apiKey, callID, command); err != nil {
@@ -282,7 +281,6 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		if apiKey != "" {
 			command := TelnyxCallCommand{
 				Command:       "speak",
-				CallControlID: callID,
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
 				Text:          "Hi there, you've reached SparkForge. I'm Charsi, the AI assistant. Please leave your message after the tone and I'll get back to you.",
 				Language:      "en-US",
@@ -298,7 +296,6 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		if apiKey != "" {
 			command := TelnyxCallCommand{
 				Command:               "record_start",
-				CallControlID:         callID,
 				WebhookURL:            r.getWebhookURL("/webhook/telnyx/voice"),
 				Format:                "wav",
 				Channels:              "single",
