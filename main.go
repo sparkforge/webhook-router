@@ -58,8 +58,9 @@ type TelnyxVoicePayload struct {
 
 // TelnyxCallCommand represents a call control command to send to Telnyx
 // Note: call_control_id is NOT included in JSON body - it goes in the URL path
+// Command is in the URL path (/actions/{command}), not the body, so json:"-"
 type TelnyxCallCommand struct {
-	Command               string `json:"command,omitempty"`
+	Command               string `json:"-"`
 	WebhookURL            string `json:"webhook_url,omitempty"`
 	AudioURL              string `json:"audio_url,omitempty"`
 	Text                  string `json:"text,omitempty"`
@@ -203,7 +204,8 @@ func (r *WebhookRouter) sendTelnyxCommand(apiKey string, callControlID string, c
 		return fmt.Errorf("marshal error: %v", err)
 	}
 
-	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions", url.PathEscape(callControlID))
+	// Telnyx API uses /actions/{command} endpoint format
+	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions/%s", url.PathEscape(callControlID), command.Command)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("request create error: %v", err)
