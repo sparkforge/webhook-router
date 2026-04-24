@@ -230,6 +230,44 @@ func (r *WebhookRouter) sendTelnyxCommand(apiKey string, callControlID string, c
 	return nil
 }
 
+// fetchTranscription fetches the transcription text from Telnyx API
+func (r *WebhookRouter) fetchTranscription(apiKey, recordingID string) (string, error) {
+	url := fmt.Sprintf("https://api.telnyx.com/v2/recording_transcriptions/%s", recordingID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Telnyx returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			TranscriptionText string `json:"transcription_text"`
+			Status            string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	if result.Data.Status != "completed" {
+		return "", fmt.Errorf("transcription status: %s", result.Data.Status)
+	}
+
+	return result.Data.TranscriptionText, nil
+}
+
 // handleTelnyxVoice handles incoming Telnyx voice webhooks
 func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
@@ -337,6 +375,18 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		// Debug: log full payload to understand structure
 		payloadJSON, _ := json.Marshal(payload.Data.Payload)
 		log.Printf("DEBUG Transcription payload: %s", string(payloadJSON))
+		recordingID := payload.Data.Payload.RecordingID
+		// If no transcript in webhook, try to fetch via API
+		if transcript == "" && recordingID != "" {
+			apiKey := os.Getenv("TELNYX_API_KEY")
+			fetchedTranscript, err := r.fetchTranscription(apiKey, recordingID)
+			if err != nil {
+				log.Printf("Could not fetch transcription via API: %v", err)
+			} else if fetchedTranscript != "" {
+				transcript = fetchedTranscript
+				log.Printf("Fetched transcription via API: %s", transcript)
+			}
+		}
 
 		// Get the call info
 		var caller string
