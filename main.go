@@ -47,6 +47,7 @@ type TelnyxVoicePayload struct {
 			State           string `json:"state"`
 			AudioURL        string `json:"audio_url,omitempty"`
 			Text            string `json:"text,omitempty"`
+        Transcription   string `json:"transcription,omitempty"`
 			Status          string `json:"status,omitempty"`
 			DTMF            string `json:"dtmf,omitempty"`
 			RecordingURL    string `json:"recording_url,omitempty"`
@@ -326,7 +327,12 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 
 	case "call.recording.transcription.saved":
 		// Transcription received - send to OpenClaw
+		// The transcription text may be in 'text' or 'transcription' field
 		transcript := payload.Data.Payload.Text
+		if transcript == "" {
+			// Try alternative field names that Telnyx might use
+			transcript = payload.Data.Payload.Transcription
+		}
 		recordingURL := payload.Data.Payload.RecordingURL
 
 		// Get the call info
