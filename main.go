@@ -153,8 +153,18 @@ func (r *WebhookRouter) handleHealth(w http.ResponseWriter, req *http.Request) {
 
 func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{}) error {
 	// Build the request body
+	var text string
+	if m, ok := payload.(map[string]interface{}); ok {
+		if msg, ok := m["message"].(string); ok {
+			text = msg
+		}
+	}
+	if text == "" {
+		text = fmt.Sprintf("Telnyx %s received: %+v", eventType, payload)
+	}
+
 	body := map[string]interface{}{
-		"text": fmt.Sprintf("Telnyx %s received: %+v", eventType, payload),
+		"text": text,
 		"mode": "now",
 	}
 
