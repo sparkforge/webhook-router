@@ -232,7 +232,7 @@ func (r *WebhookRouter) sendTelnyxCommand(apiKey string, callControlID string, c
 
 // fetchTranscription fetches the transcription text from Telnyx API
 func (r *WebhookRouter) fetchTranscription(apiKey, recordingID string) (string, error) {
-	url := fmt.Sprintf("https://api.telnyx.com/v2/recording_transcriptions/%s", recordingID)
+	url := fmt.Sprintf("https://api.telnyx.com/v2/recording_transcriptions?filter[recording_id]=%s", recordingID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
@@ -252,7 +252,7 @@ func (r *WebhookRouter) fetchTranscription(apiKey, recordingID string) (string, 
 	}
 
 	var result struct {
-		Data struct {
+		Data []struct {
 			TranscriptionText string `json:"transcription_text"`
 			Status            string `json:"status"`
 		} `json:"data"`
@@ -261,11 +261,15 @@ func (r *WebhookRouter) fetchTranscription(apiKey, recordingID string) (string, 
 		return "", err
 	}
 
-	if result.Data.Status != "completed" {
-		return "", fmt.Errorf("transcription status: %s", result.Data.Status)
+	if len(result.Data) == 0 {
+		return "", fmt.Errorf("no transcriptions found")
 	}
 
-	return result.Data.TranscriptionText, nil
+	if result.Data[0].Status != "completed" {
+		return "", fmt.Errorf("transcription status: %s", result.Data[0].Status)
+	}
+
+	return result.Data[0].TranscriptionText, nil
 }
 
 // handleTelnyxVoice handles incoming Telnyx voice webhooks
