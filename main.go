@@ -163,16 +163,27 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 		text = fmt.Sprintf("Telnyx %s received: %+v", eventType, payload)
 	}
 
-	body := map[string]interface{}{
-		"text": text,
-		"mode": "now",
-	}
-
-	// If target session key is configured, route there
+	// If target session key is configured, use /hooks/agent endpoint
 	targetSession := os.Getenv("TARGET_SESSION_KEY")
+	var url string
+	var body map[string]interface{}
+	
 	if targetSession != "" {
-		body["sessionKey"] = targetSession
-		log.Printf("Routing to session: %s", targetSession)
+		url = r.openclawWebhookURL + "/agent"
+		body = map[string]interface{}{
+			"message":     text,
+			"sessionKey":  targetSession,
+			"wakeMode":    "now",
+			"deliver":     true,
+			"channel":     "last",
+		}
+		log.Printf("Routing to session via /agent: %s", targetSession)
+	} else {
+		url = r.openclawWebhookURL + "/wake"
+		body = map[string]interface{}{
+			"text": text,
+			"mode": "now",
+		}
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -180,8 +191,6 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 		return fmt.Errorf("marshal error: %v", err)
 	}
 
-	// Create the request
-	url := r.openclawWebhookURL + "/wake"
 	log.Printf("Forwarding to: %s", url)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
