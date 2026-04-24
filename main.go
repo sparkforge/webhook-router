@@ -330,10 +330,13 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		// The transcription text may be in 'text' or 'transcription' field
 		transcript := payload.Data.Payload.Text
 		if transcript == "" {
-			// Try alternative field names that Telnyx might use
 			transcript = payload.Data.Payload.Transcription
 		}
 		recordingURL := payload.Data.Payload.RecordingURL
+
+		// Debug: log full payload to understand structure
+		payloadJSON, _ := json.Marshal(payload.Data.Payload)
+		log.Printf("DEBUG Transcription payload: %s", string(payloadJSON))
 
 		// Get the call info
 		var caller string
