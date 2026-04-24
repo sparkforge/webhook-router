@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webhook-router-db-pvc
+  namespace: sparkforge
+  labels:
+    app: webhook-router
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: ""
+  volumeName: webhook-router-db-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: webhook-router-db-pv
+  namespace: sparkforge
+  labels:
+    app: webhook-router
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/db/webhook-router

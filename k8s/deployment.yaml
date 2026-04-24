@@ -43,6 +43,11 @@ spec:
           value: "https://hooks.sparkforge.io"
         - name: TARGET_SESSION_KEY
           value: "agent:main:signal:group:svnebrphdiqyhbemybm94wgtqipmci/kfjph0ozb8ys="
+        - name: DB_PATH
+          value: "/app/data/messages.db"
+        volumeMounts:
+        - name: db-storage
+          mountPath: /app/data
         resources:
           requests:
             memory: "32Mi"
@@ -62,6 +67,10 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+      volumes:
+      - name: db-storage
+        persistentVolumeClaim:
+          claimName: webhook-router-db-pvc
 ---
 apiVersion: v1
 kind: Service
