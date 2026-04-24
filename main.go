@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -56,9 +57,9 @@ type TelnyxVoicePayload struct {
 }
 
 // TelnyxCallCommand represents a call control command to send to Telnyx
+// Note: call_control_id is NOT included in JSON body - it goes in the URL path
 type TelnyxCallCommand struct {
 	Command               string `json:"command,omitempty"`
-	CallControlID         string `json:"call_control_id,omitempty"`
 	WebhookURL            string `json:"webhook_url,omitempty"`
 	AudioURL              string `json:"audio_url,omitempty"`
 	Text                  string `json:"text,omitempty"`
@@ -196,13 +197,13 @@ func (r *WebhookRouter) forwardToOpenClaw(eventType string, payload interface{})
 }
 
 // sendTelnyxCommand sends a call control command to Telnyx API
-func (r *WebhookRouter) sendTelnyxCommand(apiKey string, command TelnyxCallCommand) error {
+func (r *WebhookRouter) sendTelnyxCommand(apiKey string, callControlID string, command TelnyxCallCommand) error {
 	jsonBody, err := json.Marshal(command)
 	if err != nil {
 		return fmt.Errorf("marshal error: %v", err)
 	}
 
-	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions", command.CallControlID)
+	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions", url.PathEscape(callControlID))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("request create error: %v", err)
@@ -218,11 +219,11 @@ func (r *WebhookRouter) sendTelnyxCommand(apiKey string, command TelnyxCallComma
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("Telnyx returned status %d", resp.StatusCode)
 	}
 
-	log.Printf("Sent command %s to Telnyx for call %s", command.Command, command.CallControlID)
+	log.Printf("Sent command %s to Telnyx for call %s", command.Command, callControlID)
 	return nil
 }
 
@@ -271,7 +272,7 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 				CallControlID: callID,
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
 			}
-			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
+			if err := r.sendTelnyxCommand(apiKey, callID, command); err != nil {
 				log.Printf("Error answering call: %v", err)
 			}
 		}
@@ -287,7 +288,7 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 				Language:      "en-US",
 				Voice:         "female",
 			}
-			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
+			if err := r.sendTelnyxCommand(apiKey, callID, command); err != nil {
 				log.Printf("Error speaking greeting: %v", err)
 			}
 		}
@@ -306,7 +307,7 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 				TranscriptionEngine:   "B", // Telnyx engine
 				TranscriptionLanguage: "en-US",
 			}
-			if err := r.sendTelnyxCommand(apiKey, command); err != nil {
+			if err := r.sendTelnyxCommand(apiKey, callID, command); err != nil {
 				log.Printf("Error starting recording: %v", err)
 			}
 		}
