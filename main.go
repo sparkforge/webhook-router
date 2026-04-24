@@ -63,7 +63,7 @@ type TelnyxCallCommand struct {
 	Command               string `json:"-"`
 	WebhookURL            string `json:"webhook_url,omitempty"`
 	AudioURL              string `json:"audio_url,omitempty"`
-	Text                  string `json:"text,omitempty"`
+	Payload               string `json:"payload,omitempty"`
 	Language              string `json:"language,omitempty"`
 	Voice                 string `json:"voice,omitempty"`
 	Format                string `json:"format,omitempty"`
@@ -284,7 +284,7 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 			command := TelnyxCallCommand{
 				Command:       "speak",
 				WebhookURL:    r.getWebhookURL("/webhook/telnyx/voice"),
-				Text:          "Hi there, you've reached SparkForge. I'm Charsi, the AI assistant. Please leave your message after the tone and I'll get back to you.",
+				Payload:          "Hi there, you've reached SparkForge. I'm Charsi, the AI assistant. Please leave your message after the tone and I'll get back to you.",
 				Language:      "en-US",
 				Voice:         "female",
 			}
