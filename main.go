@@ -203,7 +203,7 @@ func (r *WebhookRouter) sendTelnyxCommand(apiKey string, callControlID string, c
 		return fmt.Errorf("marshal error: %v", err)
 	}
 
-	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions", url.PathEscape(callControlID))
+	url := fmt.Sprintf("https://api.telnyx.com/v2/calls/%s/actions/%s", url.PathEscape(callControlID), url.PathEscape(command.Command))
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("request create error: %v", err)
@@ -326,25 +326,32 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 		// Note: Transcription comes separately via call.recording.transcription.saved
 
 	case "call.recording.transcription.saved":
-		// Transcription received - send to OpenClaw
-		transcript := payload.Data.Payload.Text
-		recordingURL := payload.Data.Payload.RecordingURL
+		// The transcription webhook doesn't include the text - we must fetch it
+		recordingID := payload.Data.Payload.RecordingID
+		if recordingID == "" {
+			log.Printf("No recording_id in transcription webhook for call %s", callID)
+			break
+		}
 
-		// Get the call info
-		var caller string
+		// Fetch transcription from Telnyx API
+		transcript := r.fetchTranscription(apiKey, recordingID)
+
+		// Get the call info and recording URL from store
+		var caller, recordingURL string
 		if call, ok := callStore.calls[callID]; ok {
 			caller = call.From
+			recordingURL = call.RecordingURL
 			call.Transcription = transcript
 		}
 
-		// Build message for Charsi with the transcription
-		message := fmt.Sprintf("📞 Voicemail from %s\n\n📝 Transcription:\n%s\n\n🔊 Recording: %s",
+		// Build message for Charsi
+		message := fmt.Sprintf("📞 Voicemail from %s\n\n📝 %s\n\n🔊 %s",
 			caller, transcript, recordingURL)
 
-		// Forward to OpenClaw with a clear summary
+		// Forward to OpenClaw
 		notification := map[string]interface{}{
-			"from":            caller,
-			"to":              to,
+			"type":            "voicemail",
+			"caller":          caller,
 			"transcription":   transcript,
 			"recording_url":   recordingURL,
 			"call_control_id": callID,
@@ -355,12 +362,69 @@ func (r *WebhookRouter) handleTelnyxVoice(w http.ResponseWriter, req *http.Reque
 			log.Printf("Error forwarding transcription to OpenClaw: %v", err)
 		}
 
-		// Clean up the call from store after we have the transcription
+		// Clean up the call from store
 		delete(callStore.calls, callID)
 	}
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// fetchTranscription retrieves transcription text from Telnyx API
+func (r *WebhookRouter) fetchTranscription(apiKey, recordingID string) string {
+	if apiKey == "" || recordingID == "" {
+		return "(transcription unavailable)"
+	}
+
+	url := fmt.Sprintf("https://api.telnyx.com/v2/recording_transcriptions?filter[recording_id]=%s", recordingID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("Error creating transcription request: %v", err)
+		return "(transcription unavailable)"
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error fetching transcription: %v", err)
+		return "(transcription unavailable)"
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Telnyx transcription API returned status %d", resp.StatusCode)
+		return "(transcription unavailable)"
+	}
+
+	var result struct {
+		Data []struct {
+			TranscriptionText string `json:"transcription_text"`
+			Text              string `json:"text"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("Error decoding transcription response: %v", err)
+		return "(transcription unavailable)"
+	}
+
+	if len(result.Data) == 0 {
+		return "(no transcription found)"
+	}
+
+	// Prefer transcription_text, fallback to text
+	text := result.Data[0].TranscriptionText
+	if text == "" {
+		text = result.Data[0].Text
+	}
+	if text == "" {
+		return "(transcription empty)"
+	}
+
+	log.Printf("Fetched transcription for recording %s: %d chars", recordingID, len(text))
+	return text
 }
 
 // getWebhookURL returns the full URL for a webhook path
